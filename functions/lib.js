@@ -78,6 +78,32 @@ let listAliasedVersions = co.wrap(function* (funcArn) {
   return yield loop(undefined, []);
 });
 
+let listCurrentVersions = co.wrap(function* (funcArn) {
+  console.log(`listing versions that are newer than 1 year old : ${funcArn}`);
+  var d = new Date();
+  d = new Date(d.setYear(d.getYear() - 1));
+
+  let loop = co.wrap(function* (marker, acc) {
+    let params = {
+      FunctionName: funcArn,
+      Marker: marker,
+      MaxItems: 20
+    };
+
+    let res = yield lambda.listVersionsByFunction(params).promise();
+    let versions = res.Versions.filter(x => new Date(x.LastModified) >= d).map(x => x.Version).filter(x => x != "$LATEST");
+    let newAcc = acc.concat(versions);
+
+    if (res.NextMarker) {
+      return yield loop(res.NextMarker, newAcc);
+    } else {
+      return newAcc;
+    }
+  });
+
+  return yield loop(undefined, []);
+});
+
 let deleteVersion = co.wrap(function* (funcArn, version) {
   console.log(`deleting [${funcArn}] version [${version}]`);
 
@@ -86,19 +112,24 @@ let deleteVersion = co.wrap(function* (funcArn, version) {
     Qualifier: version
   };
 
-  yield lambda.deleteFunction(params).promise();
+  //yield lambda.deleteFunction(params).promise();
+  setTimeout(function(){
+    console.log('wait');
+  }, 1000);
 });
 
 let cleanFunc = co.wrap(function* (funcArn) {
   console.log(`cleaning function: ${funcArn}`);
-  let aliasedVersions = yield listAliasedVersions(funcArn);
-  console.log('found aliased versions:\n', aliasedVersions);
+  //let aliasedVersions = yield listAliasedVersions(funcArn);
+  //console.log('found aliased versions:\n', aliasedVersions);
+  let currentVersions = yield listCurrentVersions(funcArn);
+  console.log('found current versions:\n', currentVersions);
 
   let versions = yield listVersions(funcArn);
   console.log('found versions:\n', versions);
 
   for (let version of versions) {
-    if (!_.includes(aliasedVersions, version)) {
+    if (!_.includes(currentVersions, version)) {
       yield deleteVersion(funcArn, version);
     }
   }
